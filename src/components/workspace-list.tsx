@@ -27,6 +27,7 @@ interface Project {
 export function WorkspaceList() {
   const [projects, setProjects] = useState<Project[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -44,15 +45,48 @@ export function WorkspaceList() {
     fetchProjects()
   }, [])
 
+  const handleExportAll = async () => {
+    const projectsWithConversations = projects.filter(project => project.conversationCount > 0)
+
+    if (projectsWithConversations.length === 0) {
+      alert('No conversations found to export.')
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      await exportAllConversations(projectsWithConversations)
+    } catch (error) {
+      console.error('Export failed:', error)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   if (isLoading) {
     return <Loading message="Loading projects..." />
   }
 
   const projectsWithConversations = projects.filter(project => project.conversationCount > 0)
   const projectsWithoutConversations = projects.filter(project => project.conversationCount === 0)
+  const totalConversations = projectsWithConversations.reduce((sum, p) => sum + p.conversationCount, 0)
 
   return (
     <div className="space-y-8">
+      {/* Export All Button */}
+      {projectsWithConversations.length > 0 && (
+        <div className="flex justify-end">
+          <Button
+            onClick={handleExportAll}
+            disabled={isExporting}
+            variant="default"
+            className="gap-2"
+          >
+            <Download className="w-4 h-4" />
+            {isExporting ? 'Exporting...' : `Export All (${totalConversations} conversations)`}
+          </Button>
+        </div>
+      )}
       {/* Projects with conversations */}
       {projectsWithConversations.length > 0 && (
         <Card>
