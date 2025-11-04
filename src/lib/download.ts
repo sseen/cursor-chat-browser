@@ -156,3 +156,90 @@ export function copyMarkdown(tab: ChatTab) {
   const markdown = convertChatToMarkdown(tab)
   navigator.clipboard.writeText(markdown)
 }
+
+// Helper function to sanitize filename
+function sanitizeFilename(filename: string): string {
+  // Remove or replace invalid characters for filenames
+  return filename
+    .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid characters with underscore
+    .replace(/\s+/g, '_') // Replace spaces with underscore
+    .substring(0, 100) // Limit length
+}
+
+// Add this new function for exporting all conversations as a zip file
+export async function exportAllConversations(projects: Array<{id: string, name: string, conversationCount: number}>) {
+  try {
+    const zip = new JSZip()
+
+    // Filter projects with conversations
+    const projectsWithConversations = projects.filter(p => p.conversationCount > 0)
+
+    if (projectsWithConversations.length === 0) {
+      alert('No conversations found to export.')
+      return
+    }
+
+    let fileCount = 0
+
+    // Process each project
+    for (const project of projectsWithConversations) {
+      try {
+        // Fetch all tabs for this workspace
+        const response = await fetch(`/api/workspaces/${project.id}/tabs`)
+        if (!response.ok) {
+          console.error(`Failed to fetch tabs for ${project.name}`)
+          continue
+        }
+
+        const data = await response.json()
+        const tabs = data.tabs || []
+
+        if (tabs.length === 0) {
+          continue
+        }
+
+        // Add each conversation as a separate file
+        for (const tab of tabs) {
+          const conversationMarkdown = convertChatToMarkdown(tab)
+
+          // Create filename: conversationName + timestamp (YYYY-MM-DD_HH-MM-SS)
+          const date = new Date(tab.timestamp)
+          const dateStr = date.toISOString().split('T')[0] // YYYY-MM-DD
+          const timeStr = date.toTimeString().split(' ')[0].replace(/:/g, '-') // HH-MM-SS
+          const timestamp = `${dateStr}_${timeStr}`
+
+          const conversationName = tab.title || `Chat_${tab.id.slice(0, 8)}`
+          const sanitizedName = sanitizeFilename(conversationName)
+          const filename = `${sanitizedName}_${timestamp}.md`
+
+          // Add file to zip (organize by project folder)
+          const projectFolder = sanitizeFilename(project.name)
+          zip.file(`${projectFolder}/${filename}`, conversationMarkdown)
+          fileCount++
+        }
+      } catch (error) {
+        console.error(`Error processing project ${project.name}:`, error)
+      }
+    }
+
+    if (fileCount === 0) {
+      alert('No conversations found to export.')
+      return
+    }
+
+    // Generate zip file
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(zipBlob)
+    const a = document.createElement('a')
+    a.href = url
+    const exportTimestamp = new Date().toISOString().split('T')[0]
+    a.download = `all-conversations-${exportTimestamp}.zip`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Failed to export all conversations:', error)
+    alert('Failed to export conversations. Please try again.')
+  }
+}
